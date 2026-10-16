@@ -1,1 +1,601 @@
 
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mi Cancionero</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f3f5f8;color:#202124;font-family:Arial,Helvetica,sans-serif}
+header{background:#243447;color:white;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+h1{font-size:24px;margin:0}
+main{max-width:1250px;margin:20px auto;padding:0 14px;display:grid;grid-template-columns:330px minmax(0,1fr);gap:16px}
+.panel{background:white;border:1px solid #dfe3e8;border-radius:12px;padding:16px;min-width:0}
+h2{font-size:19px;margin:0 0 14px}
+label{display:block;font-size:14px;font-weight:bold;margin:12px 0 5px}
+input,textarea,button{font:inherit}
+input,textarea{width:100%;padding:10px;border:1px solid #cbd2da;border-radius:7px}
+textarea{resize:vertical;min-height:260px;font-family:monospace;line-height:1.5}
+button,.file-label{border:0;border-radius:7px;padding:10px 12px;background:#2459a9;color:white;cursor:pointer;font-weight:bold}
+button:hover{filter:brightness(.95)}
+button:disabled{opacity:.6;cursor:wait}
+.secondary,.file-label{background:#e8edf4;color:#203247}
+.danger{background:#b3261e;color:white}
+.buttons,.toolbar,.searchrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
+.searchrow input{flex:1;min-width:100px}
+.toolbar label{margin:0}
+.toolbar input[type=range]{width:100px;padding:0}
+.muted,.status{font-size:13px;color:#65717e}
+.status{margin-top:10px;min-height:18px;overflow-wrap:anywhere}
+.error{color:#b3261e}
+.song-list{display:flex;flex-direction:column;gap:7px;max-height:42vh;overflow:auto;margin-top:12px}
+.song-item{display:flex;align-items:center;gap:5px;padding:7px;border:1px solid #dfe3e8;border-radius:8px}
+.song-pick{flex:1;min-width:0;text-align:left;background:transparent;color:#202124;overflow-wrap:anywhere}
+.song-pick small{display:block;font-weight:normal;color:#65717e;margin-top:4px}
+.song-view{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;font-family:monospace;font-size:18px;min-height:200px;max-height:65vh;overflow:auto;padding:15px;background:#fbfcfe;border:1px solid #dfe3e8;border-radius:8px;margin-top:12px}
+.hidden{display:none!important}
+.file-label{display:inline-block;margin-top:10px}
+hr{border:0;border-top:1px solid #e0e5eb;margin:18px 0}
+footer{font-size:12px;color:#65717e;margin-top:14px}
+@media(max-width:760px){main{grid-template-columns:1fr;margin-top:12px}header{padding:14px}h1{font-size:21px}.song-list{max-height:30vh}}
+</style>
+</head>
+
+<body>
+<header>
+  <h1>🎸 Mi Cancionero</h1>
+  <span id="connection">Conectando con la biblioteca...</span>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Buscar canciones</h2>
+
+    <label for="webSearch">Buscar en La Cuerda</label>
+    <div class="searchrow">
+      <input id="webSearch" placeholder="Título o artista">
+      <button id="searchWeb" type="button">Buscar</button>
+    </div>
+    <p class="muted">Busca en Google dentro de lacuerda.net.</p>
+
+    <hr>
+
+    <h2>Biblioteca compartida</h2>
+
+    <label for="filter">Filtrar canciones guardadas</label>
+    <input id="filter" placeholder="Escribe título o artista...">
+
+    <div class="buttons">
+      <button id="newSong" type="button">Nueva canción</button>
+      <button id="exportBtn" type="button" class="secondary">Exportar JSON</button>
+    </div>
+
+    <label for="importFile" class="file-label">Importar canciones JSON</label>
+    <input id="importFile" type="file" accept=".json,application/json" class="hidden">
+
+    <div id="songList" class="song-list"></div>
+    <div id="listStatus" class="status" aria-live="polite"></div>
+
+    <footer>
+      Biblioteca online compartida entre tus dispositivos. Necesitas conexión a Internet para sincronizar.
+    </footer>
+  </section>
+
+  <section class="panel">
+    <h2 id="formHeading">Nueva canción</h2>
+
+    <form id="songForm">
+      <input id="songId" type="hidden">
+
+      <label for="title">Título</label>
+      <input id="title" maxlength="200" required placeholder="Título de la canción">
+
+      <label for="artist">Artista</label>
+      <input id="artist" maxlength="200" placeholder="Nombre del artista">
+
+      <label for="lyrics">Letra y acordes</label>
+      <textarea id="lyrics" required placeholder="Escribe o pega aquí la letra y los acordes..."></textarea>
+
+      <div class="buttons">
+        <button id="saveBtn" type="submit">Guardar canción</button>
+        <button id="clearBtn" type="button" class="secondary">Limpiar</button>
+        <button id="deleteBtn" type="button" class="danger hidden">Borrar canción</button>
+      </div>
+
+      <div id="editStatus" class="status" aria-live="polite"></div>
+    </form>
+
+    <hr>
+
+    <h2>Lectura y desplazamiento</h2>
+
+    <div class="toolbar">
+      <button id="playScroll" type="button">▶ Iniciar</button>
+      <button id="stopScroll" type="button" class="secondary">⏸ Pausar</button>
+      <label for="speed">Velocidad</label>
+      <input id="speed" type="range" min="1" max="10" value="3">
+      <label for="fontSize">Letra</label>
+      <input id="fontSize" type="range" min="12" max="32" value="18">
+    </div>
+
+    <div class="toolbar">
+      <button id="transposeDown" type="button" class="secondary">− Tono</button>
+      <button id="transposeUp" type="button" class="secondary">+ Tono</button>
+      <button id="resetTranspose" type="button" class="secondary">Restablecer tono</button>
+      <span id="transposeLabel" class="muted">Transposición: 0</span>
+    </div>
+
+    <div id="songView" class="song-view" tabindex="0">
+      Selecciona una canción de la biblioteca o crea una nueva.
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  // CONEXIÓN CON TU PROYECTO SUPABASE
+  const SUPABASE_URL = "https://amckkzemxwuotghdksii.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_yEt0lJfJU_NWyQcIAVQUGA_DH-26IbG";
+
+  const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  const $ = id => document.getElementById(id);
+
+  let songs = [];
+  let currentSong = null;
+  let scrollTimer = null;
+  let transpose = 0;
+  let loading = false;
+
+  const NOTES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+  const ENHARMONIC = {
+    Db:"C#", Eb:"D#", Gb:"F#", Ab:"G#", Bb:"A#",
+    "B#":"C", "E#":"F", Cb:"B"
+  };
+
+  function setStatus(id, message, isError = false) {
+    $(id).textContent = message;
+    $(id).classList.toggle("error", isError);
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, char => ({
+      "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
+    })[char]);
+  }
+
+  function makeId() {
+    return crypto.randomUUID
+      ? crypto.randomUUID()
+      : Date.now().toString(36) + Math.random().toString(36).slice(2);
+  }
+
+  function normalizeSong(song) {
+    return {
+      id: String(song.id || makeId()),
+      titulo: String(song.titulo ?? song.title ?? "Sin título"),
+      artista: String(song.artista ?? song.artist ?? ""),
+      letra: String(song.letra ?? song.lyrics ?? ""),
+      actualizado_en: song.actualizado_en || new Date().toISOString()
+    };
+  }
+
+  // CARGAR LA BIBLIOTECA DESDE SUPABASE
+  async function loadSongs(showMessage = true) {
+    if (loading) return;
+    loading = true;
+
+    try {
+      const { data, error } = await db
+        .from("canciones")
+        .select("id,titulo,artista,letra,actualizado_en")
+        .order("titulo", { ascending: true });
+
+      if (error) throw error;
+
+      songs = (data || []).map(normalizeSong);
+      $("connection").textContent = "Conectado · " + songs.length + " canciones";
+
+      renderList();
+
+      if (currentSong) {
+        const updated = songs.find(song => song.id === currentSong.id);
+
+        if (updated) {
+          currentSong = updated;
+          renderSongView();
+        } else {
+          currentSong = null;
+          $("songView").textContent = "Esta canción ya no está en la biblioteca.";
+        }
+      }
+
+      if (showMessage) {
+        setStatus(
+          "listStatus",
+          songs.length
+            ? songs.length + " canciones en la biblioteca compartida."
+            : "La biblioteca está vacía. Añade tu primera canción."
+        );
+      }
+    } catch (error) {
+      $("connection").textContent = "Error de conexión";
+      setStatus(
+        "listStatus",
+        "No se pudo cargar la biblioteca: " + (error.message || String(error)),
+        true
+      );
+    } finally {
+      loading = false;
+    }
+  }
+
+  // MOSTRAR LA LISTA DE CANCIONES
+  function renderList() {
+    const query = $("filter").value.trim().toLocaleLowerCase("es");
+    const list = songs.filter(song =>
+      (song.titulo + " " + song.artista).toLocaleLowerCase("es").includes(query)
+    );
+
+    $("songList").replaceChildren();
+
+    if (!list.length) {
+      const empty = document.createElement("p");
+      empty.className = "muted";
+      empty.textContent = "No hay canciones que coincidan.";
+      $("songList").appendChild(empty);
+      return;
+    }
+
+    list.forEach(song => {
+      const row = document.createElement("div");
+      row.className = "song-item";
+
+      const pick = document.createElement("button");
+      pick.type = "button";
+      pick.className = "song-pick";
+      pick.innerHTML =
+        escapeHtml(song.titulo) +
+        "<small>" + escapeHtml(song.artista || "Artista desconocido") + "</small>";
+      pick.addEventListener("click", () => selectSong(song.id));
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "danger";
+      remove.textContent = "×";
+      remove.title = "Borrar canción";
+      remove.setAttribute("aria-label", "Borrar " + song.titulo);
+      remove.addEventListener("click", () => deleteSong(song.id));
+
+      row.append(pick, remove);
+      $("songList").appendChild(row);
+    });
+  }
+
+  // SELECCIONAR UNA CANCIÓN
+  function selectSong(id) {
+    const song = songs.find(item => item.id === id);
+    if (!song) return;
+
+    currentSong = song;
+    $("songId").value = song.id;
+    $("title").value = song.titulo;
+    $("artist").value = song.artista;
+    $("lyrics").value = song.letra;
+    $("formHeading").textContent = "Editar canción";
+    $("deleteBtn").classList.remove("hidden");
+
+    transpose = 0;
+    renderSongView();
+    $("songView").scrollTop = 0;
+    setStatus("editStatus", "");
+  }
+
+  // LIMPIAR EL FORMULARIO
+  function clearForm() {
+    $("songForm").reset();
+    $("songId").value = "";
+    $("formHeading").textContent = "Nueva canción";
+    $("deleteBtn").classList.add("hidden");
+
+    currentSong = null;
+    transpose = 0;
+    updateTransposeLabel();
+
+    $("songView").textContent = "Selecciona una canción de la biblioteca o crea una nueva.";
+    setStatus("editStatus", "");
+  }
+
+  // TRANSPOSICIÓN BÁSICA DE ACORDES
+  function shiftRoot(root, steps) {
+    const normalized = ENHARMONIC[root] || root;
+    const index = NOTES.indexOf(normalized);
+    if (index < 0) return root;
+    return NOTES[(index + steps + 120) % 12];
+  }
+
+  function transposeChord(chord, steps) {
+    const match = chord.match(/^([A-G](?:#|b)?)(.*?)(?:\/([A-G](?:#|b)?))?$/);
+    if (!match) return chord;
+
+    const root = match[1];
+    const quality = match[2] || "";
+    const bass = match[3];
+
+    if (!NOTES.includes(ENHARMONIC[root] || root)) return chord;
+
+    return shiftRoot(root, steps) + quality +
+      (bass ? "/" + shiftRoot(bass, steps) : "");
+  }
+
+  function transposeText(text, steps) {
+    if (!steps) return text;
+
+    return text.split("\n").map(line => {
+      // Los acordes entre corchetes, por ejemplo [Am] o [G/B].
+      if (/\[[A-G][#b]?[^\]]*\]/.test(line)) {
+        return line.replace(/\[([A-G][#b]?(?:m|min|maj|dim|aug|sus|add)?\d*(?:\/[A-G][#b]?)?)\]/g,
+          (whole, chord) => "[" + transposeChord(chord, steps) + "]");
+      }
+
+      // Transponer líneas que parecen estar formadas por acordes.
+      const tokens = line.trim().split(/\s+/).filter(Boolean);
+      if (tokens.length > 0) {
+        const chordPattern = /^[A-G][#b]?(?:m|min|maj|dim|aug|sus|add)?\d*(?:\/[A-G][#b]?)?$/;
+        const chordCount = tokens.filter(token => chordPattern.test(token)).length;
+
+        if (chordCount > 0 && chordCount / tokens.length >= 0.6) {
+          return line.replace(/[A-G][#b]?(?:m|min|maj|dim|aug|sus|add)?\d*(?:\/[A-G][#b]?)?/g,
+            chord => transposeChord(chord, steps));
+        }
+      }
+
+      return line;
+    }).join("\n");
+  }
+
+  function renderSongView() {
+    if (!currentSong) return;
+
+    $("songView").textContent = transposeText(currentSong.letra, transpose);
+    $("songView").style.fontSize = $("fontSize").value + "px";
+    updateTransposeLabel();
+  }
+
+  function updateTransposeLabel() {
+    $("transposeLabel").textContent =
+      "Transposición: " + (transpose > 0 ? "+" : "") + transpose;
+  }
+
+  // GUARDAR O ACTUALIZAR UNA CANCIÓN
+  async function saveSong(event) {
+    event.preventDefault();
+
+    const titulo = $("title").value.trim();
+    const artista = $("artist").value.trim();
+    const letra = $("lyrics").value.trim();
+
+    if (!titulo || !letra) {
+      setStatus("editStatus", "Escribe al menos el título y la letra.", true);
+      return;
+    }
+
+    const id = $("songId").value || makeId();
+    const record = {
+      id,
+      titulo,
+      artista,
+      letra,
+      actualizado_en: new Date().toISOString()
+    };
+
+    $("saveBtn").disabled = true;
+    setStatus("editStatus", "Guardando en la biblioteca online...");
+
+    try {
+      const { error } = await db
+        .from("canciones")
+        .upsert(record, { onConflict: "id" });
+
+      if (error) throw error;
+
+      currentSong = normalizeSong(record);
+      $("songId").value = id;
+      $("formHeading").textContent = "Editar canción";
+      $("deleteBtn").classList.remove("hidden");
+
+      await loadSongs(false);
+      currentSong = songs.find(song => song.id === id) || normalizeSong(record);
+      renderSongView();
+
+      setStatus("editStatus", "Canción guardada en la biblioteca compartida.");
+    } catch (error) {
+      setStatus(
+        "editStatus",
+        "No se pudo guardar: " + (error.message || String(error)),
+        true
+      );
+    } finally {
+      $("saveBtn").disabled = false;
+    }
+  }
+
+  // BORRAR UNA CANCIÓN
+  async function deleteSong(id) {
+    const song = songs.find(item => item.id === id);
+    if (!song) return;
+
+    if (!confirm(
+      '¿Seguro que quieres borrar "' + song.titulo +
+      '"? Se borrará también para los demás dispositivos.'
+    )) return;
+
+    setStatus("listStatus", "Borrando canción...");
+
+    try {
+      const { error } = await db.from("canciones").delete().eq("id", id);
+      if (error) throw error;
+
+      if (currentSong && currentSong.id === id) clearForm();
+
+      await loadSongs(false);
+      setStatus("listStatus", "Canción borrada de la biblioteca compartida.");
+    } catch (error) {
+      setStatus(
+        "listStatus",
+        "No se pudo borrar: " + (error.message || String(error)),
+        true
+      );
+    }
+  }
+
+  // BÚSQUEDA EN LA CUERDA
+  $("searchWeb").addEventListener("click", () => {
+    const query = $("webSearch").value.trim();
+    if (!query) {
+      $("webSearch").focus();
+      return;
+    }
+
+    const url = "https://www.google.com/search?q=" +
+      encodeURIComponent("site:lacuerda.net " + query);
+
+    window.open(url, "_blank", "noopener,noreferrer");
+  });
+
+  $("webSearch").addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      $("searchWeb").click();
+    }
+  });
+
+  // DESPLAZAMIENTO AUTOMÁTICO
+  function stopScroll() {
+    if (scrollTimer !== null) {
+      clearInterval(scrollTimer);
+      scrollTimer = null;
+    }
+  }
+
+  $("playScroll").addEventListener("click", () => {
+    stopScroll();
+
+    scrollTimer = setInterval(() => {
+      const view = $("songView");
+      view.scrollTop += Number($("speed").value) * 0.6;
+
+      if (view.scrollTop + view.clientHeight >= view.scrollHeight) {
+        stopScroll();
+      }
+    }, 50);
+  });
+
+  $("stopScroll").addEventListener("click", stopScroll);
+
+  $("fontSize").addEventListener("input", () => {
+    $("songView").style.fontSize = $("fontSize").value + "px";
+  });
+
+  // CAMBIAR EL TONO
+  $("transposeUp").addEventListener("click", () => {
+    transpose = (transpose + 1) % 12;
+    renderSongView();
+  });
+
+  $("transposeDown").addEventListener("click", () => {
+    transpose = (transpose + 11) % 12;
+    renderSongView();
+  });
+
+  $("resetTranspose").addEventListener("click", () => {
+    transpose = 0;
+    renderSongView();
+  });
+
+  // EXPORTAR COPIA DE SEGURIDAD
+  $("exportBtn").addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify(songs, null, 2)], {
+      type: "application/json"
+    });
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "mi-cancionero.json";
+    link.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // IMPORTAR CANCIONES DESDE JSON
+  $("importFile").addEventListener("change", async event => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    try {
+      const parsed = JSON.parse(await file.text());
+
+      if (!Array.isArray(parsed)) {
+        throw new Error("El archivo debe contener una lista de canciones.");
+      }
+
+      const records = parsed.map(normalizeSong).map(song => ({
+        id: song.id,
+        titulo: song.titulo,
+        artista: song.artista,
+        letra: song.letra,
+        actualizado_en: new Date().toISOString()
+      }));
+
+      if (!confirm(
+        "Se van a importar " + records.length +
+        " canciones a la biblioteca compartida. ¿Continuar?"
+      )) return;
+
+      setStatus("listStatus", "Importando canciones...");
+
+      for (let i = 0; i < records.length; i += 100) {
+        const batch = records.slice(i, i + 100);
+        const { error } = await db
+          .from("canciones")
+          .upsert(batch, { onConflict: "id" });
+
+        if (error) throw error;
+      }
+
+      await loadSongs(false);
+      setStatus("listStatus", "Importación completada: " + records.length + " canciones.");
+    } catch (error) {
+      setStatus(
+        "listStatus",
+        "Error al importar: " + (error.message || String(error)),
+        true
+      );
+    } finally {
+      event.target.value = "";
+    }
+  });
+
+  // CONECTAR LOS CONTROLES
+  $("songForm").addEventListener("submit", saveSong);
+  $("clearBtn").addEventListener("click", clearForm);
+  $("newSong").addEventListener("click", clearForm);
+  $("deleteBtn").addEventListener("click", () => {
+    const id = $("songId").value;
+    if (id) deleteSong(id);
+  });
+  $("filter").addEventListener("input", renderList);
+
+  // ACTUALIZAR LA BIBLIOTECA PERIÓDICAMENTE
+  loadSongs();
+  setInterval(() => loadSongs(false), 30000);
+
+})();
+</script>
+</body>
+</html>
