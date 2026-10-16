@@ -11,7 +11,7 @@
 body{margin:0;background:#f3f5f8;color:#202124;font-family:Arial,Helvetica,sans-serif}
 header{background:#243447;color:white;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 h1{font-size:24px;margin:0}
-main{max-width:1250px;margin:20px auto;padding:0 14px;display:grid;grid-template-columns:330px minmax(0,1fr);gap:16px}
+main{max-width:1250px;margin:20px auto;padding:0 14px;display:grid;grid-template-columns:350px minmax(0,1fr);gap:16px}
 .panel{background:white;border:1px solid #dfe3e8;border-radius:12px;padding:16px;min-width:0}
 h2{font-size:19px;margin:0 0 14px}
 label{display:block;font-size:14px;font-weight:bold;margin:12px 0 5px}
@@ -23,23 +23,23 @@ button:hover{filter:brightness(.95)}
 button:disabled{opacity:.6;cursor:wait}
 .secondary,.file-label{background:#e8edf4;color:#203247}
 .danger{background:#b3261e;color:white}
-.buttons,.toolbar,.searchrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
-.searchrow input{flex:1;min-width:100px}
+.buttons,.toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
 .toolbar label{margin:0}
-.toolbar input[type=range]{width:100px;padding:0}
-.muted,.status{font-size:13px;color:#65717e}
+.toolbar input[type=range]{width:95px;padding:0}
+.muted,.status{font-size:13px;color:#65717e;line-height:1.5}
 .status{margin-top:10px;min-height:18px;overflow-wrap:anywhere}
 .error{color:#b3261e}
-.song-list{display:flex;flex-direction:column;gap:7px;max-height:42vh;overflow:auto;margin-top:12px}
-.song-item{display:flex;align-items:center;gap:5px;padding:7px;border:1px solid #dfe3e8;border-radius:8px}
-.song-pick{flex:1;min-width:0;text-align:left;background:transparent;color:#202124;overflow-wrap:anywhere}
-.song-pick small{display:block;font-weight:normal;color:#65717e;margin-top:4px}
-.song-view{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;font-family:monospace;font-size:18px;min-height:200px;max-height:65vh;overflow:auto;padding:15px;background:#fbfcfe;border:1px solid #dfe3e8;border-radius:8px;margin-top:12px}
+.song-list,.results-list{display:flex;flex-direction:column;gap:7px;max-height:38vh;overflow:auto;margin-top:12px}
+.song-item,.result-item{display:flex;align-items:center;gap:7px;padding:9px;border:1px solid #dfe3e8;border-radius:8px}
+.song-pick,.result-pick{flex:1;min-width:0;text-align:left;background:transparent;color:#202124;overflow-wrap:anywhere}
+.song-pick small,.result-pick small{display:block;font-weight:normal;color:#65717e;margin-top:4px;line-height:1.4}
+.result-pick.selected{border:2px solid #2459a9;background:#edf4ff}
+.song-view{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;font-family:monospace;font-size:18px;min-height:180px;max-height:60vh;overflow:auto;padding:15px;background:#fbfcfe;border:1px solid #dfe3e8;border-radius:8px;margin-top:12px}
 .hidden{display:none!important}
 .file-label{display:inline-block;margin-top:10px}
 hr{border:0;border-top:1px solid #e0e5eb;margin:18px 0}
-footer{font-size:12px;color:#65717e;margin-top:14px}
-@media(max-width:760px){main{grid-template-columns:1fr;margin-top:12px}header{padding:14px}h1{font-size:21px}.song-list{max-height:30vh}}
+footer{font-size:12px;color:#65717e;margin-top:14px;line-height:1.5}
+@media(max-width:760px){main{grid-template-columns:1fr;margin-top:12px}header{padding:14px}h1{font-size:21px}.song-list,.results-list{max-height:30vh}}
 </style>
 </head>
 <body>
@@ -50,8 +50,8 @@ footer{font-size:12px;color:#65717e;margin-top:14px}
 
 <main>
 <section class="panel">
-  <h2>Buscar canciones</h2>
-  <p class="muted">Escribe el título, el grupo o ambos. Los campos son opcionales.</p>
+  <h2>Buscar letras</h2>
+  <p class="muted">Busca por título, artista o ambos. El primer resultado se cargará automáticamente en el formulario y podrás elegir otra coincidencia si lo prefieres.</p>
 
   <form id="searchForm">
     <label for="searchTitle">Título de la canción</label>
@@ -61,12 +61,15 @@ footer{font-size:12px;color:#65717e;margin-top:14px}
     <input id="searchArtist" placeholder="Ej.: La Oreja de Van Gogh">
 
     <div class="buttons">
-      <button type="submit">Buscar opciones</button>
-      <button id="clearSearch" type="button" class="secondary">Limpiar búsqueda</button>
+      <button id="searchBtn" type="submit">Buscar canción</button>
+      <button id="artistBtn" type="button" class="secondary">Buscar artista</button>
     </div>
   </form>
 
-  <p class="muted">Se abrirá una pestaña con resultados de LaCuerda para que elijas la canción correcta. Después podrás copiar su letra y acordes al formulario.</p>
+  <div id="searchStatus" class="status" aria-live="polite"></div>
+  <div id="resultsList" class="results-list"></div>
+
+  <p class="muted">Fuente de búsqueda: LRCLIB. La disponibilidad de letras depende de su catálogo.</p>
 
   <hr>
 
@@ -85,12 +88,12 @@ footer{font-size:12px;color:#65717e;margin-top:14px}
   <div id="songList" class="song-list"></div>
   <div id="listStatus" class="status" aria-live="polite"></div>
 
-  <footer>Biblioteca compartida entre dispositivos. Necesitas conexión a Internet para sincronizar.</footer>
+  <footer>Biblioteca compartida entre dispositivos. Se necesita conexión a Internet para sincronizar.</footer>
 </section>
 
 <section class="panel" id="editorPanel">
   <h2 id="formHeading">Nueva canción</h2>
-  <p class="muted">Para guardar una canción necesitas el título y la letra. El artista es opcional.</p>
+  <p class="muted">Revisa el resultado cargado. Pulsa Guardar canción para incorporarlo a tu biblioteca compartida.</p>
 
   <form id="songForm">
     <input id="songId" type="hidden">
@@ -102,7 +105,7 @@ footer{font-size:12px;color:#65717e;margin-top:14px}
     <input id="artist" maxlength="200" placeholder="Nombre del grupo o artista">
 
     <label for="lyrics">Letra y acordes</label>
-    <textarea id="lyrics" required placeholder="Escribe o pega aquí la letra y los acordes..."></textarea>
+    <textarea id="lyrics" required placeholder="Aquí aparecerá la letra cuando esté disponible, o puedes escribirla o pegarla manualmente."></textarea>
 
     <div class="buttons">
       <button id="saveBtn" type="submit">Guardar canción</button>
@@ -131,7 +134,7 @@ footer{font-size:12px;color:#65717e;margin-top:14px}
     <span id="transposeLabel" class="muted">Transposición: 0</span>
   </div>
 
-  <div id="songView" class="song-view" tabindex="0">Selecciona una canción de la biblioteca o crea una nueva.</div>
+  <div id="songView" class="song-view" tabindex="0">Selecciona una canción de la biblioteca o busca una letra.</div>
 </section>
 </main>
 
@@ -139,17 +142,20 @@ footer{font-size:12px;color:#65717e;margin-top:14px}
 (() => {
 "use strict";
 
-// CONEXIÓN CON SUPABASE
+// SUPABASE: biblioteca compartida
 const SUPABASE_URL = "https://amckkzemxwuotghdksii.supabase.co";
 const SUPABASE_KEY = "sb_publishable_yEt0lJfJU_NWyQcIAVQUGA_DH-26IbG";
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
 const $ = id => document.getElementById(id);
 
 let songs = [];
 let currentSong = null;
 let scrollTimer = null;
 let transpose = 0;
-let loading = false;
+let loadingLibrary = false;
+let searchResults = [];
+let searchGeneration = 0;
 
 const NOTES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 const ENHARMONIC = {
@@ -162,18 +168,6 @@ function setStatus(id, message, isError = false) {
   $(id).classList.toggle("error", isError);
 }
 
-function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, char => ({
-    "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
-  })[char]);
-}
-
-function makeId() {
-  return crypto.randomUUID
-    ? crypto.randomUUID()
-    : Date.now().toString(36) + Math.random().toString(36).slice(2);
-}
-
 function normalizeSong(song) {
   return {
     id: String(song.id || makeId()),
@@ -184,10 +178,179 @@ function normalizeSong(song) {
   };
 }
 
-// CARGAR BIBLIOTECA COMPARTIDA
+function makeId() {
+  return crypto.randomUUID
+    ? crypto.randomUUID()
+    : Date.now().toString(36) + Math.random().toString(36).slice(2);
+}
+
+// BUSCAR EN LRCLIB
+async function searchLyrics(mode) {
+  const title = $("searchTitle").value.trim();
+  const artist = $("searchArtist").value.trim();
+
+  if (mode === "artist" && !artist) {
+    setStatus("searchStatus", "Escribe el nombre del artista o grupo.", true);
+    $("searchArtist").focus();
+    return;
+  }
+
+  if (mode === "song" && !title && !artist) {
+    setStatus("searchStatus", "Escribe un título, un artista o ambos.", true);
+    $("searchTitle").focus();
+    return;
+  }
+
+  const generation = ++searchGeneration;
+  $("searchBtn").disabled = true;
+  $("artistBtn").disabled = true;
+  $("resultsList").replaceChildren();
+  searchResults = [];
+  setStatus("searchStatus", "Buscando letras en LRCLIB...");
+
+  try {
+    const params = new URLSearchParams();
+    if (title && mode === "song") params.set("track_name", title);
+    if (artist) params.set("artist_name", artist);
+
+    const url = "https://lrclib.net/api/search?" + params.toString();
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {"Accept":"application/json"}
+    });
+
+    if (!response.ok) {
+      throw new Error("LRCLIB respondió con el código " + response.status);
+    }
+
+    const data = await response.json();
+    if (generation !== searchGeneration) return;
+
+    if (!Array.isArray(data) || data.length === 0) {
+      setStatus("searchStatus", "No se encontraron canciones. Prueba con otro título o artista.");
+      return;
+    }
+
+    searchResults = data.filter(item =>
+      item && (item.trackName || item.artistName)
+    );
+
+    if (!searchResults.length) {
+      setStatus("searchStatus", "No se encontraron resultados utilizables.");
+      return;
+    }
+
+    renderSearchResults();
+
+    setStatus(
+      "searchStatus",
+      "Se encontraron " + searchResults.length +
+      " resultados. El primero se ha cargado en el formulario. Puedes elegir otro."
+    );
+
+    // Importar automáticamente el primer resultado al formulario.
+    await importResult(0, false);
+
+  } catch (error) {
+    if (generation === searchGeneration) {
+      setStatus(
+        "searchStatus",
+        "No se pudo buscar en LRCLIB: " +
+        (error.message || String(error)) +
+        ". Comprueba la conexión e inténtalo de nuevo.",
+        true
+      );
+    }
+  } finally {
+    if (generation === searchGeneration) {
+      $("searchBtn").disabled = false;
+      $("artistBtn").disabled = false;
+    }
+  }
+}
+
+function renderSearchResults() {
+  const container = $("resultsList");
+  container.replaceChildren();
+
+  searchResults.forEach((item, index) => {
+    const row = document.createElement("div");
+    row.className = "result-item";
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "result-pick";
+    button.innerHTML =
+      escapeHtml(item.trackName || "Título desconocido") +
+      "<small>" +
+      escapeHtml(item.artistName || "Artista desconocido") +
+      (item.albumName ? " · " + escapeHtml(item.albumName) : "") +
+      (item.plainLyrics || item.syncedLyrics ? " · Letra disponible" : " · Sin letra disponible") +
+      "</small>";
+
+    button.addEventListener("click", () => importResult(index, true));
+    row.appendChild(button);
+    container.appendChild(row);
+  });
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, char => ({
+    "&":"&amp;",
+    "<":"&lt;",
+    ">":"&gt;",
+    '"':"&quot;",
+    "'":"&#39;"
+  })[char]);
+}
+
+async function importResult(index, showMessage = true) {
+  const item = searchResults[index];
+  if (!item) return;
+
+  // Si LRCLIB no tiene letra, se carga el título y el artista igualmente.
+  const lyrics = item.plainLyrics || item.syncedLyrics || "";
+
+  $("songId").value = "";
+  $("title").value = item.trackName || "";
+  $("artist").value = item.artistName || "";
+  $("lyrics").value = lyrics;
+  $("formHeading").textContent = "Resultado de búsqueda";
+  $("deleteBtn").classList.add("hidden");
+
+  currentSong = null;
+  transpose = 0;
+  updateTransposeLabel();
+
+  $("songView").textContent = lyrics ||
+    "No hay letra disponible para este resultado. Puedes pegarla manualmente aquí en el formulario.";
+
+  $("songView").scrollTop = 0;
+
+  document.querySelectorAll(".result-pick").forEach((button, i) => {
+    button.classList.toggle("selected", i === index);
+  });
+
+  if (showMessage) {
+    setStatus("searchStatus", "Has seleccionado: " +
+      (item.trackName || "Sin título") + " — " +
+      (item.artistName || "Artista desconocido"));
+  }
+
+  setStatus(
+    "editStatus",
+    lyrics
+      ? "Letra cargada. Revisa el contenido y pulsa Guardar canción para guardarla en tu biblioteca."
+      : "Se han cargado el título y el artista, pero LRCLIB no proporciona letra para esta coincidencia."
+  );
+
+  $("editorPanel").scrollIntoView({behavior:"smooth", block:"start"});
+}
+
+// BIBLIOTECA COMPARTIDA
 async function loadSongs(showMessage = true) {
-  if (loading) return;
-  loading = true;
+  if (loadingLibrary) return;
+  loadingLibrary = true;
 
   try {
     const {data, error} = await db
@@ -222,11 +385,10 @@ async function loadSongs(showMessage = true) {
     setStatus("listStatus", "No se pudo cargar la biblioteca: " +
       (error.message || String(error)), true);
   } finally {
-    loading = false;
+    loadingLibrary = false;
   }
 }
 
-// MOSTRAR LISTA
 function renderList() {
   const query = $("filter").value.trim().toLocaleLowerCase("es");
   const list = songs.filter(song =>
@@ -267,7 +429,6 @@ function renderList() {
   });
 }
 
-// SELECCIONAR CANCIÓN GUARDADA
 function selectSong(id) {
   const song = songs.find(item => item.id === id);
   if (!song) return;
@@ -290,7 +451,6 @@ function selectSong(id) {
   }
 }
 
-// NUEVA CANCIÓN: NO ABRE LACUERDA
 function clearForm() {
   $("songForm").reset();
   $("songId").value = "";
@@ -299,7 +459,7 @@ function clearForm() {
   currentSong = null;
   transpose = 0;
   updateTransposeLabel();
-  $("songView").textContent = "Selecciona una canción de la biblioteca o crea una nueva.";
+  $("songView").textContent = "Selecciona una canción de la biblioteca o busca una letra.";
   $("songView").scrollTop = 0;
   setStatus("editStatus", "");
 }
@@ -310,7 +470,82 @@ function startNewSong() {
   $("title").focus({preventScroll:true});
 }
 
-// TRANSPONER ACORDES
+// GUARDAR CANCIÓN EN SUPABASE
+async function saveSong(event) {
+  event.preventDefault();
+
+  const titulo = $("title").value.trim();
+  const artista = $("artist").value.trim();
+  const letra = $("lyrics").value.trim();
+
+  if (!titulo) {
+    setStatus("editStatus", "Escribe el título de la canción.", true);
+    return;
+  }
+  if (!letra) {
+    setStatus("editStatus", "No hay letra. Puedes pegarla manualmente antes de guardar.", true);
+    return;
+  }
+
+  const id = $("songId").value || makeId();
+  const record = {
+    id,
+    titulo,
+    artista,
+    letra,
+    actualizado_en: new Date().toISOString()
+  };
+
+  $("saveBtn").disabled = true;
+  setStatus("editStatus", "Guardando en la biblioteca compartida...");
+
+  try {
+    const {error} = await db.from("canciones")
+      .upsert(record, {onConflict:"id"});
+
+    if (error) throw error;
+
+    currentSong = normalizeSong(record);
+    $("songId").value = id;
+    $("formHeading").textContent = "Editar canción";
+    $("deleteBtn").classList.remove("hidden");
+
+    await loadSongs(false);
+    currentSong = songs.find(song => song.id === id) || normalizeSong(record);
+    renderSongView();
+
+    setStatus("editStatus", "Canción guardada en la biblioteca compartida.");
+  } catch (error) {
+    setStatus("editStatus", "No se pudo guardar: " +
+      (error.message || String(error)), true);
+  } finally {
+    $("saveBtn").disabled = false;
+  }
+}
+
+async function deleteSong(id) {
+  const song = songs.find(item => item.id === id);
+  if (!song) return;
+
+  if (!confirm('¿Seguro que quieres borrar "' + song.titulo +
+      '"? También se borrará de los demás dispositivos.')) return;
+
+  setStatus("listStatus", "Borrando canción...");
+
+  try {
+    const {error} = await db.from("canciones").delete().eq("id", id);
+    if (error) throw error;
+
+    if (currentSong && currentSong.id === id) clearForm();
+    await loadSongs(false);
+    setStatus("listStatus", "Canción borrada de la biblioteca compartida.");
+  } catch (error) {
+    setStatus("listStatus", "No se pudo borrar: " +
+      (error.message || String(error)), true);
+  }
+}
+
+// TRANSPOSICIÓN DE ACORDES
 function shiftRoot(root, steps) {
   const normalized = ENHARMONIC[root] || root;
   const index = NOTES.indexOf(normalized);
@@ -321,10 +556,13 @@ function shiftRoot(root, steps) {
 function transposeChord(chord, steps) {
   const match = chord.match(/^([A-G](?:#|b)?)(.*?)(?:\/([A-G](?:#|b)?))?$/);
   if (!match) return chord;
+
   const root = match[1];
   const quality = match[2] || "";
   const bass = match[3];
+
   if (!NOTES.includes(ENHARMONIC[root] || root)) return chord;
+
   return shiftRoot(root, steps) + quality +
     (bass ? "/" + shiftRoot(bass, steps) : "");
 }
@@ -355,7 +593,14 @@ function transposeText(text, steps) {
 }
 
 function renderSongView() {
-  if (!currentSong) return;
+  if (!currentSong) {
+    $("songView").textContent = $("lyrics").value ||
+      "Selecciona una canción de la biblioteca o busca una letra.";
+    $("songView").style.fontSize = $("fontSize").value + "px";
+    updateTransposeLabel();
+    return;
+  }
+
   $("songView").textContent = transposeText(currentSong.letra, transpose);
   $("songView").style.fontSize = $("fontSize").value + "px";
   updateTransposeLabel();
@@ -365,107 +610,6 @@ function updateTransposeLabel() {
   $("transposeLabel").textContent =
     "Transposición: " + (transpose > 0 ? "+" : "") + transpose;
 }
-
-// GUARDAR CANCIÓN
-async function saveSong(event) {
-  event.preventDefault();
-
-  const titulo = $("title").value.trim();
-  const artista = $("artist").value.trim();
-  const letra = $("lyrics").value.trim();
-
-  if (!titulo || !letra) {
-    setStatus("editStatus", "Escribe el título y la letra de la canción.", true);
-    return;
-  }
-
-  const id = $("songId").value || makeId();
-  const record = {
-    id, titulo, artista, letra,
-    actualizado_en: new Date().toISOString()
-  };
-
-  $("saveBtn").disabled = true;
-  setStatus("editStatus", "Guardando en la biblioteca online...");
-
-  try {
-    const {error} = await db.from("canciones")
-      .upsert(record, {onConflict:"id"});
-    if (error) throw error;
-
-    currentSong = normalizeSong(record);
-    $("songId").value = id;
-    $("formHeading").textContent = "Editar canción";
-    $("deleteBtn").classList.remove("hidden");
-
-    await loadSongs(false);
-    currentSong = songs.find(song => song.id === id) || normalizeSong(record);
-    renderSongView();
-    setStatus("editStatus", "Canción guardada en la biblioteca compartida.");
-  } catch (error) {
-    setStatus("editStatus", "No se pudo guardar: " +
-      (error.message || String(error)), true);
-  } finally {
-    $("saveBtn").disabled = false;
-  }
-}
-
-// BORRAR CANCIÓN
-async function deleteSong(id) {
-  const song = songs.find(item => item.id === id);
-  if (!song) return;
-
-  if (!confirm('¿Seguro que quieres borrar "' + song.titulo +
-      '"? También se borrará de los demás dispositivos.')) return;
-
-  setStatus("listStatus", "Borrando canción...");
-
-  try {
-    const {error} = await db.from("canciones").delete().eq("id", id);
-    if (error) throw error;
-    if (currentSong && currentSong.id === id) clearForm();
-    await loadSongs(false);
-    setStatus("listStatus", "Canción borrada de la biblioteca compartida.");
-  } catch (error) {
-    setStatus("listStatus", "No se pudo borrar: " +
-      (error.message || String(error)), true);
-  }
-}
-
-// BUSCAR POR TÍTULO Y/O GRUPO EN LACUERDA
-$("searchForm").addEventListener("submit", event => {
-  event.preventDefault();
-
-  const title = $("searchTitle").value.trim();
-  const artist = $("searchArtist").value.trim();
-
-  if (!title && !artist) {
-    setStatus("listStatus", "Escribe un título, un grupo o ambos para buscar.", true);
-    $("searchTitle").focus();
-    return;
-  }
-
-  const terms = ["site:lacuerda.net"];
-  if (title) terms.push(title);
-  if (artist) terms.push(artist);
-
-  const url = "https://www.google.com/search?q=" +
-    encodeURIComponent(terms.join(" "));
-
-  const newTab = window.open(url, "_blank");
-  if (!newTab) {
-    setStatus("listStatus", "El navegador ha bloqueado la pestaña. Permite las ventanas emergentes para esta página.", true);
-    return;
-  }
-
-  setStatus("listStatus", "Se han abierto los resultados. Elige la canción correcta y copia su letra al formulario.");
-});
-
-$("clearSearch").addEventListener("click", () => {
-  $("searchForm").reset();
-  setStatus("listStatus", "");
-  $("searchTitle").focus();
-});
 
 // DESPLAZAMIENTO AUTOMÁTICO
 function stopScroll() {
@@ -490,7 +634,6 @@ $("fontSize").addEventListener("input", () => {
   $("songView").style.fontSize = $("fontSize").value + "px";
 });
 
-// CAMBIAR TONO
 $("transposeUp").addEventListener("click", () => {
   transpose = (transpose + 1) % 12;
   renderSongView();
@@ -519,7 +662,7 @@ $("exportBtn").addEventListener("click", () => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 
-// IMPORTAR CANCIONES JSON
+// IMPORTAR COPIA DE SEGURIDAD
 $("importFile").addEventListener("change", async event => {
   const file = event.target.files && event.target.files[0];
   if (!file) return;
@@ -559,7 +702,15 @@ $("importFile").addEventListener("change", async event => {
   }
 });
 
-// CONECTAR LOS BOTONES
+// BOTONES DE BÚSQUEDA
+$("searchForm").addEventListener("submit", event => {
+  event.preventDefault();
+  searchLyrics("song");
+});
+
+$("artistBtn").addEventListener("click", () => searchLyrics("artist"));
+
+// RESTO DE BOTONES
 $("songForm").addEventListener("submit", saveSong);
 $("clearBtn").addEventListener("click", clearForm);
 $("newSong").addEventListener("click", startNewSong);
@@ -569,7 +720,7 @@ $("deleteBtn").addEventListener("click", () => {
 });
 $("filter").addEventListener("input", renderList);
 
-// ACTUALIZAR BIBLIOTECA PERIÓDICAMENTE
+// INICIO Y SINCRONIZACIÓN PERIÓDICA
 loadSongs();
 setInterval(() => loadSongs(false), 30000);
 
