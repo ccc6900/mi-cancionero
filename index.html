@@ -38,6 +38,14 @@ button:disabled{opacity:.6;cursor:wait}
 .file-label{display:inline-block;margin-top:10px}
 hr{border:0;border-top:1px solid #e0e5eb;margin:18px 0}
 footer{font-size:12px;color:#65717e;margin-top:14px;line-height:1.5}
+
+/* Pantalla completa (API nativa o modo alternativo para iPhone) */
+#reader:fullscreen,#reader.pseudo-fs{background:#fbfcfe;padding:12px;display:flex;flex-direction:column;width:100%;height:100%;overflow:hidden}
+#reader.pseudo-fs{position:fixed;inset:0;z-index:1000}
+#reader:fullscreen .song-view,#reader.pseudo-fs .song-view{flex:1;max-height:none;margin-top:10px}
+#reader:-webkit-full-screen{background:#fbfcfe;padding:12px;display:flex;flex-direction:column;width:100%;height:100%;overflow:hidden}
+#reader:-webkit-full-screen .song-view{flex:1;max-height:none;margin-top:10px}
+
 @media(max-width:760px){main{grid-template-columns:1fr;margin-top:12px}header{padding:14px}h1{font-size:21px}.song-list,.results-list{max-height:30vh}}
 </style>
 </head>
@@ -68,7 +76,7 @@ footer{font-size:12px;color:#65717e;margin-top:14px;line-height:1.5}
   <div id="searchStatus" class="status" aria-live="polite"></div>
   <div id="resultsList" class="results-list"></div>
 
-  <p class="muted">Fuentes de búsqueda: LRCLIB (búsqueda flexible) y lyrics.ovh como respaldo. La disponibilidad de letras depende de sus catálogos.</p>
+  <p class="muted">Fuentes de búsqueda: LRCLIB y lyrics.ovh como respaldo. La disponibilidad de letras depende de sus catálogos.</p>
 
   <hr>
 
@@ -117,23 +125,19 @@ footer{font-size:12px;color:#65717e;margin-top:14px;line-height:1.5}
   <hr>
 
   <h2>Lectura y desplazamiento</h2>
-  <div class="toolbar">
-    <button id="playScroll" type="button">▶ Iniciar</button>
-    <button id="stopScroll" type="button" class="secondary">⏸ Pausar</button>
-    <label for="speed">Velocidad</label>
-    <input id="speed" type="range" min="1" max="10" value="3">
-    <label for="fontSize">Letra</label>
-    <input id="fontSize" type="range" min="12" max="32" value="18">
-  </div>
+  <div id="reader">
+    <div class="toolbar">
+      <button id="playScroll" type="button">▶ Iniciar</button>
+      <button id="stopScroll" type="button" class="secondary">⏸ Pausar</button>
+      <label for="speed">Velocidad</label>
+      <input id="speed" type="range" min="1" max="10" value="3">
+      <label for="fontSize">Letra</label>
+      <input id="fontSize" type="range" min="12" max="48" value="18">
+      <button id="fullscreenBtn" type="button" class="secondary">⛶ Pantalla completa</button>
+    </div>
 
-  <div class="toolbar">
-    <button id="transposeDown" type="button" class="secondary">− Tono</button>
-    <button id="transposeUp" type="button" class="secondary">+ Tono</button>
-    <button id="resetTranspose" type="button" class="secondary">Restablecer tono</button>
-    <span id="transposeLabel" class="muted">Transposición: 0</span>
+    <div id="songView" class="song-view" tabindex="0">Selecciona una canción de la biblioteca o busca una letra.</div>
   </div>
-
-  <div id="songView" class="song-view" tabindex="0">Selecciona una canción de la biblioteca o busca una letra.</div>
 </section>
 </main>
 
@@ -151,16 +155,9 @@ const $ = id => document.getElementById(id);
 let songs = [];
 let currentSong = null;
 let scrollTimer = null;
-let transpose = 0;
 let loadingLibrary = false;
 let searchResults = [];
 let searchGeneration = 0;
-
-const NOTES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
-const ENHARMONIC = {
-  Db:"C#", Eb:"D#", Gb:"F#", Ab:"G#", Bb:"A#",
-  "B#":"C", "E#":"F", Cb:"B"
-};
 
 function setStatus(id, message, isError = false) {
   $(id).textContent = message;
@@ -181,6 +178,12 @@ function makeId() {
   return crypto.randomUUID
     ? crypto.randomUUID()
     : Date.now().toString(36) + Math.random().toString(36).slice(2);
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, char => ({
+    "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
+  })[char]);
 }
 
 // UTILIDADES DE BÚSQUEDA
@@ -208,15 +211,75 @@ async function fetchWithTimeout(url, ms = 12000) {
   }
 }
 
+// LRCLIB con reintentos si el servidor da 5xx o 429
 async function lrclibSearch(paramsObj) {
-  const r = await fetchWithTimeout(
-    "https://lrclib.net/api/search?" + new URLSearchParams(paramsObj).toString()
-  );
-  if (!r.ok) throw new Error("LRCLIB respondió con el código " + r.status);
-  const data = await r.json();
-  return Array.isArray(data)
-    ? data.filter(i => i && (i.plainLyrics || i.syncedLyrics))
-    : [];
+  const url = "https://lrclib.net/api/search?" + new URLSearchParams(paramsObj).toString();
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const r = await fetchWithTimeout(url, 8000);
+      if (r.ok) {
+        const data = await r.json();
+        return Array.isArray(data)
+          ? data.filter(i => i && (i.plainLyrics || i.syncedLyrics))
+          : [];
+      }
+      lastStatus = r.status;
+      if (r.status < 500 && r.status !== 429) break;
+    } catch (_) {
+      lastStatus = 0;
+    }
+    await new Promise(res => setTimeout(res, 800 * (attempt + 1)));
+  }
+  throw new Error("LRCLIB no responde (código " + (lastStatus || "sin conexión") + ")");
+}
+
+// Respaldo lyrics.ovh: funciona también con solo título o solo artista
+async function lyricsOvhFallback(title, artist) {
+  let candidates = [];
+
+  if (title && artist) {
+    candidates.push({title, artist});
+  } else {
+    try {
+      const term = [title, artist].filter(Boolean).join(" ");
+      const r = await fetchWithTimeout(
+        "https://api.lyrics.ovh/suggest/" + encodeURIComponent(term), 10000
+      );
+      if (r.ok) {
+        const d = await r.json();
+        candidates = (d.data || []).slice(0, 5)
+          .map(x => ({title: x.title, artist: x.artist && x.artist.name}))
+          .filter(x => x.title && x.artist);
+      }
+    } catch (_) {}
+  }
+
+  const results = [];
+  for (const c of candidates) {
+    const variants = [[c.artist, c.title], [normalizeText(c.artist), normalizeText(c.title)]];
+    for (const [a, t] of variants) {
+      try {
+        const r = await fetchWithTimeout(
+          "https://api.lyrics.ovh/v1/" + encodeURIComponent(a) + "/" + encodeURIComponent(t), 10000
+        );
+        if (r.ok) {
+          const d = await r.json();
+          if (d && d.lyrics) {
+            results.push({
+              trackName: c.title,
+              artistName: c.artist,
+              albumName: "lyrics.ovh",
+              plainLyrics: d.lyrics.replace(/\r\n/g, "\n").trim()
+            });
+            break;
+          }
+        }
+      } catch (_) {}
+    }
+  }
+  return results;
 }
 
 // Cascada: LRCLIB exacto -> LRCLIB difuso -> LRCLIB sin tildes -> lyrics.ovh
@@ -229,43 +292,21 @@ async function searchAllSources(title, artist) {
   if (q) attempts.push({q});
   if (nq && nq !== q) attempts.push({q: nq});
 
-  let lastError = null;
+  let lrclibError = null;
   for (const params of attempts) {
     try {
       const found = await lrclibSearch(params);
       if (found.length) return found;
     } catch (error) {
-      lastError = error;
+      lrclibError = error;
+      break; // si LRCLIB está caído, no insistir con más variantes
     }
   }
 
-  // Respaldo: lyrics.ovh (necesita título y artista)
-  if (title && artist) {
-    const variants = [
-      [artist, title],
-      [normalizeText(artist), normalizeText(title)]
-    ];
-    for (const [a, t] of variants) {
-      try {
-        const r = await fetchWithTimeout(
-          "https://api.lyrics.ovh/v1/" + encodeURIComponent(a) + "/" + encodeURIComponent(t)
-        );
-        if (r.ok) {
-          const d = await r.json();
-          if (d && d.lyrics) {
-            return [{
-              trackName: title,
-              artistName: artist,
-              albumName: "lyrics.ovh",
-              plainLyrics: d.lyrics.replace(/\r\n/g, "\n").trim()
-            }];
-          }
-        }
-      } catch (_) {}
-    }
-  }
+  const fallback = await lyricsOvhFallback(title, artist);
+  if (fallback.length) return fallback;
 
-  if (lastError) throw lastError;
+  if (lrclibError) throw lrclibError;
   return [];
 }
 
@@ -318,9 +359,8 @@ async function searchLyrics(mode) {
     if (generation === searchGeneration) {
       setStatus(
         "searchStatus",
-        "No se pudo buscar: " +
-        (error.message || String(error)) +
-        ". Comprueba la conexión e inténtalo de nuevo.",
+        "No se pudo buscar: " + (error.message || String(error)) +
+        ". Inténtalo de nuevo en un momento.",
         true
       );
     }
@@ -357,21 +397,10 @@ function renderSearchResults() {
   });
 }
 
-function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, char => ({
-    "&":"&amp;",
-    "<":"&lt;",
-    ">":"&gt;",
-    '"':"&quot;",
-    "'":"&#39;"
-  })[char]);
-}
-
 async function importResult(index, showMessage = true) {
   const item = searchResults[index];
   if (!item) return;
 
-  // Letra plana; si solo hay sincronizada, se quitan los tiempos [mm:ss.xx]
   const lyrics = item.plainLyrics || stripTimestamps(item.syncedLyrics || "");
 
   $("songId").value = "";
@@ -382,12 +411,9 @@ async function importResult(index, showMessage = true) {
   $("deleteBtn").classList.add("hidden");
 
   currentSong = null;
-  transpose = 0;
-  updateTransposeLabel();
 
   $("songView").textContent = lyrics ||
     "No hay letra disponible para este resultado. Puedes pegarla manualmente aquí en el formulario.";
-
   $("songView").scrollTop = 0;
 
   document.querySelectorAll(".result-pick").forEach((button, i) => {
@@ -504,7 +530,6 @@ function selectSong(id) {
   $("formHeading").textContent = "Editar canción";
   $("deleteBtn").classList.remove("hidden");
 
-  transpose = 0;
   renderSongView();
   $("songView").scrollTop = 0;
   setStatus("editStatus", "");
@@ -520,8 +545,6 @@ function clearForm() {
   $("formHeading").textContent = "Nueva canción";
   $("deleteBtn").classList.add("hidden");
   currentSong = null;
-  transpose = 0;
-  updateTransposeLabel();
   $("songView").textContent = "Selecciona una canción de la biblioteca o busca una letra.";
   $("songView").scrollTop = 0;
   setStatus("editStatus", "");
@@ -608,70 +631,12 @@ async function deleteSong(id) {
   }
 }
 
-// TRANSPOSICIÓN DE ACORDES
-function shiftRoot(root, steps) {
-  const normalized = ENHARMONIC[root] || root;
-  const index = NOTES.indexOf(normalized);
-  if (index < 0) return root;
-  return NOTES[(index + steps + 120) % 12];
-}
-
-function transposeChord(chord, steps) {
-  const match = chord.match(/^([A-G](?:#|b)?)(.*?)(?:\/([A-G](?:#|b)?))?$/);
-  if (!match) return chord;
-
-  const root = match[1];
-  const quality = match[2] || "";
-  const bass = match[3];
-
-  if (!NOTES.includes(ENHARMONIC[root] || root)) return chord;
-
-  return shiftRoot(root, steps) + quality +
-    (bass ? "/" + shiftRoot(bass, steps) : "");
-}
-
-function transposeText(text, steps) {
-  if (!steps) return text;
-
-  return text.split("\n").map(line => {
-    if (/\[[A-G][#b]?[^\]]*\]/.test(line)) {
-      return line.replace(
-        /\[([A-G][#b]?(?:m|min|maj|dim|aug|sus|add)?\d*(?:\/[A-G][#b]?)?)\]/g,
-        (whole, chord) => "[" + transposeChord(chord, steps) + "]"
-      );
-    }
-
-    const tokens = line.trim().split(/\s+/).filter(Boolean);
-    const chordPattern = /^[A-G][#b]?(?:m|min|maj|dim|aug|sus|add)?\d*(?:\/[A-G][#b]?)?$/;
-    const chordCount = tokens.filter(token => chordPattern.test(token)).length;
-
-    if (tokens.length && chordCount > 0 && chordCount / tokens.length >= 0.6) {
-      return line.replace(
-        /[A-G][#b]?(?:m|min|maj|dim|aug|sus|add)?\d*(?:\/[A-G][#b]?)?/g,
-        chord => transposeChord(chord, steps)
-      );
-    }
-    return line;
-  }).join("\n");
-}
-
+// VISTA DE LA CANCIÓN
 function renderSongView() {
-  if (!currentSong) {
-    $("songView").textContent = $("lyrics").value ||
-      "Selecciona una canción de la biblioteca o busca una letra.";
-    $("songView").style.fontSize = $("fontSize").value + "px";
-    updateTransposeLabel();
-    return;
-  }
-
-  $("songView").textContent = transposeText(currentSong.letra, transpose);
+  $("songView").textContent = currentSong
+    ? currentSong.letra
+    : ($("lyrics").value || "Selecciona una canción de la biblioteca o busca una letra.");
   $("songView").style.fontSize = $("fontSize").value + "px";
-  updateTransposeLabel();
-}
-
-function updateTransposeLabel() {
-  $("transposeLabel").textContent =
-    "Transposición: " + (transpose > 0 ? "+" : "") + transpose;
 }
 
 // DESPLAZAMIENTO AUTOMÁTICO
@@ -697,19 +662,50 @@ $("fontSize").addEventListener("input", () => {
   $("songView").style.fontSize = $("fontSize").value + "px";
 });
 
-$("transposeUp").addEventListener("click", () => {
-  transpose = (transpose + 1) % 12;
-  renderSongView();
-});
+// PANTALLA COMPLETA (con alternativa para navegadores sin API, como iPhone)
+const reader = $("reader");
 
-$("transposeDown").addEventListener("click", () => {
-  transpose = (transpose + 11) % 12;
-  renderSongView();
-});
+function isFullscreen() {
+  return !!(document.fullscreenElement || document.webkitFullscreenElement) ||
+    reader.classList.contains("pseudo-fs");
+}
 
-$("resetTranspose").addEventListener("click", () => {
-  transpose = 0;
-  renderSongView();
+function updateFullscreenButton() {
+  $("fullscreenBtn").textContent = isFullscreen() ? "✕ Salir de pantalla completa" : "⛶ Pantalla completa";
+}
+
+async function toggleFullscreen() {
+  if (isFullscreen()) {
+    if (reader.classList.contains("pseudo-fs")) {
+      reader.classList.remove("pseudo-fs");
+      document.body.style.overflow = "";
+    } else if (document.exitFullscreen) {
+      await document.exitFullscreen();
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+    }
+  } else {
+    try {
+      if (reader.requestFullscreen) {
+        await reader.requestFullscreen();
+      } else if (reader.webkitRequestFullscreen) {
+        reader.webkitRequestFullscreen();
+      } else {
+        throw new Error("sin API");
+      }
+    } catch (_) {
+      reader.classList.add("pseudo-fs");
+      document.body.style.overflow = "hidden";
+    }
+  }
+  updateFullscreenButton();
+}
+
+$("fullscreenBtn").addEventListener("click", toggleFullscreen);
+document.addEventListener("fullscreenchange", updateFullscreenButton);
+document.addEventListener("webkitfullscreenchange", updateFullscreenButton);
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && reader.classList.contains("pseudo-fs")) toggleFullscreen();
 });
 
 // EXPORTAR COPIA DE SEGURIDAD
